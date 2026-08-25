@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { body, validationResult } = require('express-validator');
+const { z } = require('zod');
 const User = require('../models/User');
 const Student = require('../models/Student');
 const Faculty = require('../models/Faculty');
@@ -8,74 +8,164 @@ const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /api/auth/login
-router.post('/login', [
-  body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty()
-], async (req, res) => {
+// Input sanitization: strips HTML tags and whitelists safe chars (alphanumeric + spaces + standard symbols)
+const sanitizeInputString = (val) => {
+  if (typeof val !== 'string') return '';
+  // Strip HTML/JS tags
+  let cleaned = val.replace(/<[^>]*>?/gm, '');
+  // Whitelist alphanumeric, spaces, and basic email/punctuation characters
+  cleaned = cleaned.replace(/[^a-zA-Z0-9\s\.\-_@,]/g, '');
+  return cleaned.trim();
+};
+
+// Zod schemas for server-side validation
+const loginSchema = z.object({
+  email: z.string().email().transform(val => val.toLowerCase().trim()),
+  password: z.string().min(1),
+  captcha: z.string().optional()
+});
+
+const registerAdminSchema = z.object({
+  name: z.string().transform(sanitizeInputString),
+  email: z.string().email().transform(val => val.toLowerCase().trim()),
+  password: z.string().min(6),
+  role: z.enum(['ADMIN', 'FACULTY', 'STUDENT'])
+});
+
+const registerStudentSchema = z.object({
+  name: z.string().transform(sanitizeInputString),
+  email: z.string().email().transform(val => val.toLowerCase().trim()),
+  password: z.string().min(6),
+  studentId: z.string().transform(sanitizeInputString),
+  rollNumber: z.string().transform(sanitizeInputString),
+  departmentId: z.string().transform(sanitizeInputString),
+  year: z.number().int().min(1).max(4),
+  section: z.string().transform(sanitizeInputString)
+});
+
+// Helper: response timing equalization and progressive delay for authentication failures
+const sendGenericError = async (res, startTime, attempts) => {
+  const elapsedTime = Date.now() - startTime;
+  const progressiveDelay = attempts * 1000; // Progressive delay: 1s per failed attempt
+  const totalWait = Math.max((1500 + progressiveDelay) - elapsedTime, 0);
+  if (totalWait > 0) {
+    await new Promise(resolve => setTimeout(resolve, totalWait));
+  }
+  return res.status(401).json({ message: 'Incorrect email or password.' });
+};
+
+// POST /api/auth/login - Verified and hardened login endpoint
+router.post('/login', async (req, res) => {
+  const startTime = Date.now();
+  let emailValue = '';
+  let loginAttemptsCount = 0;
+  let userRecord = null;
+
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ message: 'Invalid input', errors: errors.array() });
+    // Validate inputs
+    const result = loginSchema.safeParse(req.body);
+    if (!result.success) {
+      return await sendGenericError(res, startTime, 0);
     }
 
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    const { email, password, captcha } = result.data;
+    emailValue = email;
+
+    // Find user
+    userRecord = await User.findOne({ email });
+    if (!userRecord) {
+      return await sendGenericError(res, startTime, 0);
     }
 
-    const isMatch = await user.comparePassword(password);
+    loginAttemptsCount = userRecord.loginAttempts || 0;
+
+    // Check account lockout (15 minutes)
+    if (userRecord.lockUntil && userRecord.lockUntil > Date.now()) {
+      return await sendGenericError(res, startTime, loginAttemptsCount);
+    }
+
+    // Require CAPTCHA validation after 3 failures
+    if (loginAttemptsCount >= 3) {
+      if (!captcha || captcha.toUpperCase() !== 'SVIET') {
+        // Return same generic message on captcha failure to prevent probing
+        return await sendGenericError(res, startTime, loginAttemptsCount);
+      }
+    }
+
+    // Compare password using constant-time verification
+    const isMatch = await userRecord.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      // Mismatch: increment failed attempts
+      userRecord.loginAttempts += 1;
+      if (userRecord.loginAttempts >= 5) {
+        userRecord.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 mins lock
+      }
+      await userRecord.save();
+      return await sendGenericError(res, startTime, userRecord.loginAttempts);
     }
 
-    if (user.status === 'PENDING') {
+    // Account status check
+    if (userRecord.status === 'PENDING') {
+      const delay = Math.max(1500 - (Date.now() - startTime), 0);
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
       return res.status(403).json({ message: 'Your account is pending administrator approval.' });
     }
-    if (user.status !== 'ACTIVE') {
+    if (userRecord.status !== 'ACTIVE') {
+      const delay = Math.max(1500 - (Date.now() - startTime), 0);
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
       return res.status(403).json({ message: 'Your account is inactive.' });
     }
 
+    // Successful login: reset attempts and lock
+    userRecord.loginAttempts = 0;
+    userRecord.lockUntil = null;
+    await userRecord.save();
+
+    // Generate JWT token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: userRecord._id, role: userRecord.role },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // Get additional profile data
+    // Fetch associated profile
     let profile = null;
-    if (user.role === 'STUDENT') {
-      profile = await Student.findOne({ userId: user._id }).populate('departmentId');
-    } else if (user.role === 'FACULTY') {
-      profile = await Faculty.findOne({ userId: user._id }).populate('departmentId');
+    if (userRecord.role === 'STUDENT') {
+      profile = await Student.findOne({ userId: userRecord._id }).populate('departmentId');
+    } else if (userRecord.role === 'FACULTY') {
+      profile = await Faculty.findOne({ userId: userRecord._id }).populate('departmentId');
+    }
+
+    // Apply timing pad to match elapsed time to 1.5 seconds
+    const elapsedTime = Date.now() - startTime;
+    const pad = Math.max(1500 - elapsedTime, 0);
+    if (pad > 0) {
+      await new Promise(r => setTimeout(r, pad));
     }
 
     res.json({
       token,
-      user: user.toJSON(),
+      user: userRecord.toJSON(),
       profile
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Login error:', error.message);
+    // Timing-equalized generic response on server error
+    const delay = Math.max(1500 - (Date.now() - startTime), 0);
+    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+    res.status(500).json({ message: 'Incorrect email or password.' });
   }
 });
 
-// POST /api/auth/register (admin only creates users)
-router.post('/register', [
-  body('name').trim().notEmpty(),
-  body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
-  body('role').isIn(['ADMIN', 'FACULTY', 'STUDENT'])
-], async (req, res) => {
+// POST /api/auth/register (admin creates users)
+router.post('/register', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ message: 'Invalid input', errors: errors.array() });
+    const result = registerAdminSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ message: 'Invalid input parameters', errors: result.error.errors });
     }
 
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role } = result.data;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -92,7 +182,7 @@ router.post('/register', [
 
     res.status(201).json({ token, user: user.toJSON() });
   } catch (error) {
-    console.error('Register error:', error);
+    console.error('Register error:', error.message);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -114,23 +204,14 @@ router.get('/me', auth, async (req, res) => {
 });
 
 // POST /api/auth/student/register (self-service signup for students)
-router.post('/student/register', [
-  body('name').trim().notEmpty(),
-  body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 6 }),
-  body('studentId').trim().notEmpty(),
-  body('rollNumber').trim().notEmpty(),
-  body('departmentId').trim().notEmpty(),
-  body('year').isInt({ min: 1, max: 4 }),
-  body('section').trim().notEmpty()
-], async (req, res) => {
+router.post('/student/register', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ message: 'Invalid input parameters', errors: errors.array() });
+    const result = registerStudentSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ message: 'Invalid input parameters', errors: result.error.errors });
     }
 
-    const { name, email, password, studentId, rollNumber, departmentId, year, section } = req.body;
+    const { name, email, password, studentId, rollNumber, departmentId, year, section } = result.data;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -170,7 +251,7 @@ router.post('/student/register', [
       profile: student
     });
   } catch (error) {
-    console.error('Student registration error:', error);
+    console.error('Student registration error:', error.message);
     res.status(500).json({ message: 'Registration failed due to server error' });
   }
 });

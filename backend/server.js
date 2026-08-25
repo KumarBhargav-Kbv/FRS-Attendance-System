@@ -23,6 +23,17 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Specific rate limiter for login endpoint (10 requests/IP/minute)
+const loginLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 10,
+  message: { message: 'Incorrect email or password.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth/login', loginLimiter);
+
+
 // Body parsing
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
