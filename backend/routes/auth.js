@@ -242,7 +242,7 @@ router.post('/student/register', async (req, res) => {
       departmentId,
       year,
       section,
-      status: 'INACTIVE' // inactive until approved
+      status: 'PENDING' // pending until approved
     });
 
     res.status(201).json({

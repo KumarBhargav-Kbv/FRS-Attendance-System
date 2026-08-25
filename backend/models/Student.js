@@ -16,7 +16,7 @@ const studentSchema = new mongoose.Schema({
   profilePhoto: { type: String },
   faceRegistered: { type: Boolean, default: false },
   faceEmbedding: { type: [Number], default: [] },
-  status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' }
+  status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'PENDING'], default: 'ACTIVE' }
 }, { timestamps: true });
 
 studentSchema.index({ departmentId: 1, year: 1, section: 1 });
