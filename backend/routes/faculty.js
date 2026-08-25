@@ -60,7 +60,8 @@ router.post('/', auth, isAdmin, [
   body('facultyId').trim().notEmpty(),
   body('fullName').trim().notEmpty(),
   body('email').isEmail().normalizeEmail(),
-  body('departmentId').notEmpty()
+  body('departmentId').notEmpty(),
+  body('password').optional({ checkFalsy: true }).isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -68,7 +69,7 @@ router.post('/', auth, isAdmin, [
       return res.status(400).json({ message: 'Invalid input', errors: errors.array() });
     }
 
-    const { facultyId, fullName, email, phone, departmentId } = req.body;
+    const { facultyId, fullName, email, phone, departmentId, password } = req.body;
 
     const existing = await Faculty.findOne({ $or: [{ facultyId }, { email }] });
     if (existing) {
@@ -79,7 +80,7 @@ router.post('/', auth, isAdmin, [
     const user = await User.create({
       name: fullName,
       email,
-      password: `Faculty@${facultyId}`,
+      password: password || `Faculty@${facultyId}`,
       role: 'FACULTY'
     });
 
@@ -123,6 +124,14 @@ router.put('/:id', auth, isAdmin, async (req, res) => {
 
     if (updates.fullName) {
       await User.findByIdAndUpdate(faculty.userId, { name: updates.fullName });
+    }
+
+    if (req.body.password) {
+      const user = await User.findById(faculty.userId);
+      if (user) {
+        user.password = req.body.password;
+        await user.save();
+      }
     }
 
     res.json(updated);

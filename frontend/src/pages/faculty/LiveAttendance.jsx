@@ -53,7 +53,7 @@ export default function LiveAttendance() {
       // Get class roster
       const classId = currentSession.classId?._id || currentSession.classId;
       const classRes = await api.get(`/classes/${classId}`);
-      const studentsRes = await api.get(`/students?department=${classRes.data.departmentId?._id}&year=${classRes.data.year}&section=${classRes.data.section}`);
+      const studentsRes = await api.get(`/students?department=${classRes.data.departmentId?._id}&year=${classRes.data.year}&section=${classRes.data.section}&status=ACTIVE`);
       setRoster(studentsRes.data.students || []);
 
     } catch (e) {

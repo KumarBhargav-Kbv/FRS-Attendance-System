@@ -111,17 +111,16 @@ router.get('/dashboard', auth, async (req, res) => {
 // GET /api/analytics/faculty-dashboard - Faculty dashboard stats
 router.get('/faculty-dashboard', auth, async (req, res) => {
   try {
-    const faculty = await Faculty.findOne({ userId: req.user._id })
-      .populate('subjects', 'subjectName subjectCode')
-      .populate({
-        path: 'assignedClasses',
-        populate: [
-          { path: 'departmentId', select: 'name code' },
-          { path: 'subjectId', select: 'subjectName subjectCode' }
-        ]
-      });
-
+    const faculty = await Faculty.findOne({ userId: req.user._id });
     if (!faculty) return res.status(404).json({ message: 'Faculty profile not found' });
+
+    // Dynamically retrieve classes assigned to this faculty
+    const classes = await Class.find({ facultyId: faculty._id })
+      .populate('departmentId', 'name code')
+      .populate('subjectId', 'subjectName subjectCode');
+
+    // Extract subjects assigned to this faculty from classes
+    const subjects = classes.map(c => c.subjectId).filter((val, idx, self) => self.findIndex(t => t?._id?.toString() === val?._id?.toString()) === idx);
 
     const today = new Date();
     const dayStart = new Date(today.setHours(0, 0, 0, 0));
@@ -146,10 +145,14 @@ router.get('/faculty-dashboard', auth, async (req, res) => {
     const allRecords = await Attendance.find({ facultyId: faculty._id });
     const allPresent = allRecords.filter(r => r.status === 'PRESENT' || r.status === 'LATE').length;
 
+    const facultyObj = faculty.toObject();
+    facultyObj.subjects = subjects;
+    facultyObj.assignedClasses = classes;
+
     res.json({
-      faculty,
+      faculty: facultyObj,
       stats: {
-        assignedClasses: faculty.assignedClasses?.length || 0,
+        assignedClasses: classes.length,
         todayClasses: todaySessions.length,
         todayPresent,
         todayTotal,
@@ -157,7 +160,7 @@ router.get('/faculty-dashboard', auth, async (req, res) => {
         averageAttendance: allRecords.length > 0 ? parseFloat(((allPresent / allRecords.length) * 100).toFixed(1)) : 0
       },
       todaySessions,
-      classes: faculty.assignedClasses || []
+      classes: classes
     });
   } catch (error) {
     console.error('Faculty dashboard error:', error);

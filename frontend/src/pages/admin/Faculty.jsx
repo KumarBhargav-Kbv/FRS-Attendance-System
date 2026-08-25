@@ -12,7 +12,7 @@ export default function Faculty() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [showDelete, setShowDelete] = useState(null);
-  const [form, setForm] = useState({ facultyId: '', fullName: '', email: '', phone: '', departmentId: '' });
+  const [form, setForm] = useState({ facultyId: '', fullName: '', email: '', password: '', phone: '', departmentId: '' });
 
   useEffect(() => { fetchFaculty(); fetchDepts(); }, []);
 
@@ -36,8 +36,8 @@ export default function Faculty() {
     catch (e) { toast.error('Delete failed'); }
   };
 
-  const resetForm = () => { setForm({ facultyId: '', fullName: '', email: '', phone: '', departmentId: '' }); setEditing(null); };
-  const openEdit = (f) => { setEditing(f); setForm({ facultyId: f.facultyId, fullName: f.fullName, email: f.email, phone: f.phone || '', departmentId: f.departmentId?._id || '' }); setShowModal(true); };
+  const resetForm = () => { setForm({ facultyId: '', fullName: '', email: '', password: '', phone: '', departmentId: '' }); setEditing(null); };
+  const openEdit = (f) => { setEditing(f); setForm({ facultyId: f.facultyId, fullName: f.fullName, email: f.email, password: '', phone: f.phone || '', departmentId: f.departmentId?._id || '' }); setShowModal(true); };
 
   const filtered = faculty.filter(f => f.fullName?.toLowerCase().includes(search.toLowerCase()) || f.email?.toLowerCase().includes(search.toLowerCase()));
 
@@ -82,6 +82,8 @@ export default function Faculty() {
             <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="input-field" required disabled={!!editing} /></div>
           <div><label className="block text-sm font-medium text-surface-700 mb-1">Phone</label>
             <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="input-field" /></div>
+          <div><label className="block text-sm font-medium text-surface-700 mb-1">{editing ? 'Change Password (optional)' : 'Password (optional)'}</label>
+            <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="input-field" placeholder={editing ? 'Leave blank to keep current' : 'Default is Faculty@<FacultyID>'} minLength={6} /></div>
           <div><label className="block text-sm font-medium text-surface-700 mb-1">Department *</label>
             <select value={form.departmentId} onChange={e => setForm({ ...form, departmentId: e.target.value })} className="input-field" required>
               <option value="">Select</option>{departments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
