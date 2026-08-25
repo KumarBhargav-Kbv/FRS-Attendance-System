@@ -179,11 +179,24 @@ router.delete('/:id', auth, isAdmin, async (req, res) => {
 });
 
 // POST /api/students/:id/register-face - Register student face
-router.post('/:id/register-face', auth, isFaculty, async (req, res) => {
+router.post('/:id/register-face', auth, async (req, res) => {
   try {
     const student = await Student.findById(req.params.id);
     if (!student) {
       return res.status(404).json({ message: 'Student not found' });
+    }
+
+    // Authorization Check: Only Staff (Admin/Faculty) OR the student themselves
+    const isSelf = req.user.role === 'STUDENT' && student.userId.toString() === req.user._id.toString();
+    const isStaff = req.user.role === 'FACULTY' || req.user.role === 'ADMIN';
+
+    if (!isSelf && !isStaff) {
+      return res.status(403).json({ message: 'Not authorized to register face for this student' });
+    }
+
+    // Students can register their face only once. Changing/updating it requires admin/faculty.
+    if (req.user.role === 'STUDENT' && student.faceRegistered) {
+      return res.status(403).json({ message: 'Your face is already registered. Please contact an administrator to update or change it.' });
     }
 
     const { images } = req.body; // Array of base64 images

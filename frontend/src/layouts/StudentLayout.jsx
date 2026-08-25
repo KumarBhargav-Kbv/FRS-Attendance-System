@@ -13,6 +13,7 @@ const sidebarLinks = [
   { path: '/student/subject-attendance', label: 'Subject Attendance', icon: BookOpen },
   { path: '/student/history', label: 'Attendance History', icon: History },
   { path: '/student/reports', label: 'Reports', icon: FileBarChart },
+  { path: '/student/face-registration', label: 'Face Registration', icon: ScanFace },
 ];
 
 export default function StudentLayout() {

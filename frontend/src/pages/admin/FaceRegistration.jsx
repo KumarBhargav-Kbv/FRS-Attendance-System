@@ -1,22 +1,39 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ScanFace, Camera, CheckCircle, AlertCircle, User, RotateCcw } from 'lucide-react';
 import { PageHeader } from '../../components/ui';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function FaceRegistration() {
+  const { user, profile } = useAuth();
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [search, setSearch] = useState('');
-  const [step, setStep] = useState('select'); // select, capture, processing, done
+  const [step, setStep] = useState('select'); // select, capture, processing, done, already-registered
   const [capturedImages, setCapturedImages] = useState([]);
   const [cameraActive, setCameraActive] = useState(false);
   const [registrationResult, setRegistrationResult] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const navigate = useNavigate();
 
-  useEffect(() => { fetchStudents(); return () => stopCamera(); }, []);
+  useEffect(() => {
+    if (user?.role === 'STUDENT') {
+      if (profile?.faceRegistered) {
+        setStep('already-registered');
+      } else {
+        setSelectedStudent(profile);
+        setStep('capture');
+        startCamera();
+      }
+    } else {
+      fetchStudents();
+    }
+    return () => stopCamera();
+  }, [user, profile]);
 
   const fetchStudents = async () => {
     try { const res = await api.get('/students'); setStudents(res.data.students || []); } catch (e) {}
@@ -126,7 +143,7 @@ export default function FaceRegistration() {
                 <h3 className="font-semibold text-surface-900">Capturing: {selectedStudent.fullName}</h3>
                 <p className="text-sm text-surface-500">{selectedStudent.studentId}</p>
               </div>
-              <button onClick={reset} className="btn-secondary text-sm">← Back</button>
+              {user?.role !== 'STUDENT' && <button onClick={reset} className="btn-secondary text-sm">← Back</button>}
             </div>
             <div className="card-body">
               <div className="grid lg:grid-cols-2 gap-6">
@@ -214,8 +231,28 @@ export default function FaceRegistration() {
             <p>✓ Quality Score: {registrationResult?.qualityScore?.toFixed(0) || 95}%</p>
           </div>
           <div className="flex gap-3 justify-center">
-            <button onClick={reset} className="btn-primary">Register Another</button>
+            {user?.role === 'STUDENT' ? (
+              <button onClick={() => navigate('/student/dashboard')} className="btn-primary">Go to Dashboard</button>
+            ) : (
+              <button onClick={reset} className="btn-primary">Register Another</button>
+            )}
           </div>
+        </div>
+      )}
+
+      {step === 'already-registered' && (
+        <div className="max-w-md mx-auto text-center py-16 bg-white rounded-3xl shadow-xl p-8 border border-surface-100 mt-12">
+          <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-6 text-blue-600">
+            <CheckCircle className="w-10 h-10" />
+          </div>
+          <h3 className="text-xl font-bold text-surface-900 mb-2">Face Already Registered</h3>
+          <p className="text-surface-500 text-sm mb-6 leading-relaxed">
+            Your face model has already been registered in the system. 
+            To update or change your face registration, please contact your department administrator.
+          </p>
+          <button onClick={() => navigate('/student/dashboard')} className="btn-primary w-full">
+            Go to Dashboard
+          </button>
         </div>
       )}
     </div>

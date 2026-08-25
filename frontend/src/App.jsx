@@ -91,6 +91,7 @@ export default function App() {
             <Route path="subject-attendance" element={<SubjectAttendance />} />
             <Route path="history" element={<StudentAttendanceHistory />} />
             <Route path="reports" element={<StudentReports />} />
+            <Route path="face-registration" element={<FaceRegistration />} />
           </Route>
 
           {/* Fallback */}
