@@ -30,8 +30,11 @@ router.post('/login', [
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    if (user.status === 'PENDING') {
+      return res.status(403).json({ message: 'Your account is pending administrator approval.' });
+    }
     if (user.status !== 'ACTIVE') {
-      return res.status(403).json({ message: 'Account is inactive' });
+      return res.status(403).json({ message: 'Your account is inactive.' });
     }
 
     const token = jwt.sign(
@@ -107,6 +110,68 @@ router.get('/me', auth, async (req, res) => {
     res.json({ user: req.user, profile });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/auth/student/register (self-service signup for students)
+router.post('/student/register', [
+  body('name').trim().notEmpty(),
+  body('email').isEmail().normalizeEmail(),
+  body('password').isLength({ min: 6 }),
+  body('studentId').trim().notEmpty(),
+  body('rollNumber').trim().notEmpty(),
+  body('departmentId').trim().notEmpty(),
+  body('year').isInt({ min: 1, max: 4 }),
+  body('section').trim().notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Invalid input parameters', errors: errors.array() });
+    }
+
+    const { name, email, password, studentId, rollNumber, departmentId, year, section } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email address already registered' });
+    }
+
+    const existingStudent = await Student.findOne({ $or: [{ studentId }, { rollNumber }] });
+    if (existingStudent) {
+      return res.status(400).json({ message: 'Student ID or Roll Number already registered' });
+    }
+
+    // Create user in PENDING state
+    const user = await User.create({
+      name,
+      email,
+      password,
+      role: 'STUDENT',
+      status: 'PENDING'
+    });
+
+    // Create student profile
+    const student = await Student.create({
+      userId: user._id,
+      studentId,
+      rollNumber,
+      fullName: name,
+      email,
+      departmentId,
+      year,
+      section,
+      status: 'INACTIVE' // inactive until approved
+    });
+
+    res.status(201).json({
+      message: 'Registration successful! Your account is pending administrator approval.',
+      user: user.toJSON(),
+      profile: student
+    });
+  } catch (error) {
+    console.error('Student registration error:', error);
+    res.status(500).json({ message: 'Registration failed due to server error' });
   }
 });
 

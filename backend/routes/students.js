@@ -235,4 +235,42 @@ router.post('/:id/register-face', auth, isFaculty, async (req, res) => {
   }
 });
 
+// PUT /api/students/:id/approve - Approve a student registration
+router.put('/:id/approve', [auth, isAdmin], async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id);
+    if (!student) {
+      return res.status(404).json({ message: 'Student profile not found' });
+    }
+
+    const user = await User.findById(student.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Associated student user account not found' });
+    }
+
+    // Set status to ACTIVE for both documents
+    user.status = 'ACTIVE';
+    student.status = 'ACTIVE';
+
+    await user.save();
+    await student.save();
+
+    // Create Audit Log
+    await AuditLog.create({
+      userId: req.user._id,
+      action: 'APPROVE_STUDENT',
+      description: `Approved student account for ${student.fullName} (${student.studentId})`
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully approved student ${student.fullName}!`,
+      student
+    });
+  } catch (error) {
+    console.error('Approve student error:', error);
+    res.status(500).json({ message: 'Server error during approval' });
+  }
+});
+
 module.exports = router;

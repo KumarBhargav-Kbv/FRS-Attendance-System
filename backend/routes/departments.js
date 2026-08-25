@@ -6,7 +6,7 @@ const { auth, isAdmin } = require('../middleware/auth');
 const router = express.Router();
 
 // GET /api/departments
-router.get('/', auth, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const departments = await Department.find().sort({ name: 1 });
     res.json(departments);

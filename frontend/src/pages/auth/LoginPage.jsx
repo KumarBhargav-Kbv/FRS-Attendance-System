@@ -177,7 +177,18 @@ export default function LoginPage() {
             </button>
           </form>
 
-
+          {selectedRole === 'STUDENT' && (
+            <p className="text-center text-sm text-surface-500 mt-6">
+              New student?{' '}
+              <button
+                type="button"
+                onClick={() => navigate('/register')}
+                className="font-semibold text-purple-600 hover:text-purple-700 transition-colors"
+              >
+                Register here
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>

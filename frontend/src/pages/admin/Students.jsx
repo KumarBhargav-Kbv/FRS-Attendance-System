@@ -13,6 +13,7 @@ export default function Students() {
   const [editingStudent, setEditingStudent] = useState(null);
   const [showDelete, setShowDelete] = useState(null);
   const [showDetail, setShowDetail] = useState(null);
+  const [activeTab, setActiveTab] = useState('ALL');
   const [form, setForm] = useState({
     studentId: '', rollNumber: '', fullName: '', email: '', phone: '',
     gender: 'Male', departmentId: '', year: 1, section: 'A', batch: '2024-2028'
@@ -59,6 +60,16 @@ export default function Students() {
     } catch (e) { toast.error('Delete failed'); }
   };
 
+  const handleApprove = async (s) => {
+    try {
+      const res = await api.put(`/students/${s._id}/approve`);
+      toast.success(res.data.message || 'Student approved');
+      fetchStudents();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Approval failed');
+    }
+  };
+
   const resetForm = () => {
     setForm({ studentId: '', rollNumber: '', fullName: '', email: '', phone: '', gender: 'Male', departmentId: '', year: 1, section: 'A', batch: '2024-2028' });
     setEditingStudent(null);
@@ -70,11 +81,16 @@ export default function Students() {
     setShowModal(true);
   };
 
-  const filtered = students.filter(s =>
-    s.fullName?.toLowerCase().includes(search.toLowerCase()) ||
-    s.studentId?.toLowerCase().includes(search.toLowerCase()) ||
-    s.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = students.filter(s => {
+    const matchesSearch = s.fullName?.toLowerCase().includes(search.toLowerCase()) ||
+      s.studentId?.toLowerCase().includes(search.toLowerCase()) ||
+      s.email?.toLowerCase().includes(search.toLowerCase());
+    
+    if (activeTab === 'PENDING') {
+      return matchesSearch && s.status === 'PENDING';
+    }
+    return matchesSearch;
+  });
 
   return (
     <div className="page-container">
@@ -82,8 +98,37 @@ export default function Students() {
         actions={<button onClick={() => { resetForm(); setShowModal(true); }} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Add Student</button>}
       />
 
+      {/* Tabs */}
+      <div className="flex border-b border-surface-100 mb-6 gap-6">
+        <button
+          onClick={() => setActiveTab('ALL')}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'ALL'
+              ? 'border-purple-600 text-purple-600'
+              : 'border-transparent text-surface-500 hover:text-surface-800'
+          }`}
+        >
+          All Students
+        </button>
+        <button
+          onClick={() => setActiveTab('PENDING')}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            activeTab === 'PENDING'
+              ? 'border-purple-600 text-purple-600'
+              : 'border-transparent text-surface-500 hover:text-surface-800'
+          }`}
+        >
+          Pending Approvals
+          {students.filter(s => s.status === 'PENDING').length > 0 && (
+            <span className="px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 rounded-full">
+              {students.filter(s => s.status === 'PENDING').length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Search */}
-      <div className="max-w-md">
+      <div className="max-w-md mb-6">
         <SearchInput value={search} onChange={setSearch} placeholder="Search students..." />
       </div>
 
@@ -123,6 +168,15 @@ export default function Students() {
                     <td className="px-6 py-3"><StatusBadge status={s.status} /></td>
                     <td className="px-6 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        {s.status === 'PENDING' && (
+                          <button
+                            onClick={() => handleApprove(s)}
+                            className="mr-2 px-2.5 py-1 text-xs font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg shadow-sm hover:shadow transition-all"
+                            title="Approve Account"
+                          >
+                            Approve
+                          </button>
+                        )}
                         <button onClick={() => setShowDetail(s)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600"><Eye className="w-4 h-4" /></button>
                         <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600"><Edit2 className="w-4 h-4" /></button>
                         <button onClick={() => setShowDelete(s)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>

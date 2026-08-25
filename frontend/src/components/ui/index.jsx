@@ -80,6 +80,7 @@ export function StatusBadge({ status }) {
     LATE: 'badge-late',
     ACTIVE: 'badge-active',
     INACTIVE: 'bg-surface-100 text-surface-600',
+    PENDING: 'bg-amber-100 text-amber-700 font-semibold',
     COMPLETED: 'bg-emerald-100 text-emerald-700',
     CANCELLED: 'bg-red-100 text-red-700',
   };
